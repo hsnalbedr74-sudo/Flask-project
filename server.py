@@ -360,4 +360,4 @@ def logout():
 # ========================
 if __name__ == "__main__":
     logging.info("Server is running...")
-    app.run(host="0.0.0.0", port=5000)
+    app.run()
