@@ -309,7 +309,7 @@ def admin_login():
         username = request.form.get("username")
         password = request.form.get("password")
 
-        if username == "admin" and password == "1234":
+        if username == "Hasan@RR" and password == "RafifIsMyLove":
             session["admin"] = True
             return redirect("/admin")
         else:
@@ -329,14 +329,15 @@ def admin_login():
 # ========================
 @app.route("/admin")
 def admin():
-    cursor.execute("SELECT * FROM visits")
-    visits = cursor.fetchall()
 
     if not session.get("admin"):
         return redirect("/admin_login")
 
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM visits")
+    visits = cursor.fetchall()
 
     cursor.execute("SELECT * FROM users")
     users = cursor.fetchall()
@@ -390,6 +391,28 @@ def admin():
             html += f"<td>{col}</td>"
         html += "</tr>"
 
+    html += "</table>"
+    
+    html += "<br><br><h2>Visits</h2>"
+
+    html += """
+<table border="1" cellpadding="5">
+<tr>
+<th>ID</th>
+<th>IP</th>
+<th>Path</th>
+<th>Method</th>
+<th>User Agent</th>
+<th>Visitor Type</th>
+<th>Time</th>
+</tr>
+"""
+
+    for visit in visits:
+        html += "<tr>"
+        for col in visit:
+            html += f"<td>{col}</td>"
+        html += "</tr>"
     html += "</table>"
 
     return html
