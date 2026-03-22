@@ -66,11 +66,56 @@ log_path = os.path.join(os.path.dirname(__file__), "log.txt")
 
 # ========================
 # تسجيل كل request
-# ========================
+# ======================
+
 @app.before_request
 def log_every_request():
-    logging.info(f"(REQUEST) {request.method} {request.path} from {request.remote_addr}")
 
+    ip = request.remote_addr
+    path = request.path
+    method = request.method
+    user_agent = request.headers.get("User-Agent", "").lower()
+    time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # 🔥 تحديد نوع الزائر
+    if "facebookexternalhit" in user_agent:
+        visitor_type = "Facebook Bot"
+
+    elif "uptimerobot" in user_agent:
+        visitor_type = "UptimeRobot"
+
+    elif "bot" in user_agent or "crawl" in user_agent:
+        visitor_type = "Other Bot"
+
+    else:
+        visitor_type = "Real User"
+
+    # تسجيل في logs
+    logging.info(f"{visitor_type} | {method} {path} | {ip}")
+
+    # 🔥 حفظ في database
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS visits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ip TEXT,
+        path TEXT,
+        method TEXT,
+        user_agent TEXT,
+        visitor_type TEXT,
+        time TEXT
+    )
+    """)
+
+    cursor.execute("""
+    INSERT INTO visits (ip, path, method, user_agent, visitor_type, time)
+    VALUES (?, ?, ?, ?, ?, ?)
+    """, (ip, path, method, user_agent, visitor_type, time))
+
+    conn.commit()
+    conn.close()
 # ========================
 # favicon
 # ========================
@@ -284,6 +329,8 @@ def admin_login():
 # ========================
 @app.route("/admin")
 def admin():
+    cursor.execute("SELECT * FROM visits")
+    visits = cursor.fetchall()
 
     if not session.get("admin"):
         return redirect("/admin_login")
@@ -360,4 +407,6 @@ def logout():
 # ========================
 if __name__ == "__main__":
     logging.info("Server is running...")
-    app.run()
+    app.run(host="0.0.0.0", port=5000)
+
+        
