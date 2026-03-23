@@ -3,6 +3,7 @@ from datetime import datetime
 import os
 import logging
 import sqlite3
+import requests
 
 # ========================
 # إنشاء قاعدة البيانات
@@ -63,7 +64,27 @@ app.secret_key = "secret123"
 
 # مسار log.txt
 log_path = os.path.join(os.path.dirname(__file__), "log.txt")
+#=========================
+# تحديد location 
+#=========================
+def get_location(ip):
 
+    try:
+
+        url = f"http://ip-api.com/json/{ip}"
+
+        response = requests.get(url, timeout=3)
+
+        data = response.json()
+
+        country = data.get("country", "Unknown")
+        city = data.get("city", "Unknown")
+        isp = data.get("isp", "Unknown")
+
+        return country, city, isp
+
+    except:
+        return "Unknown", "Unknown", "Unknown"
 # ========================
 # تسجيل كل request
 # ======================
@@ -72,6 +93,7 @@ log_path = os.path.join(os.path.dirname(__file__), "log.txt")
 def log_every_request():
 
     ip = request.remote_addr
+    country, city, isp = get_location(ip)
     path = request.path
     method = request.method
     user_agent = request.headers.get("User-Agent", "").lower()
@@ -101,6 +123,9 @@ def log_every_request():
     CREATE TABLE IF NOT EXISTS visits (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         ip TEXT,
+        country TEXT,
+        city TEXT,
+        isp TEXT,
         path TEXT,
         method TEXT,
         user_agent TEXT,
@@ -110,9 +135,9 @@ def log_every_request():
     """)
 
     cursor.execute("""
-    INSERT INTO visits (ip, path, method, user_agent, visitor_type, time)
-    VALUES (?, ?, ?, ?, ?, ?)
-    """, (ip, path, method, user_agent, visitor_type, time))
+    INSERT INTO visits (ip, country, city, isp, path, method, user_agent, visitor_type, time)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (ip,country, city, isp, path, method, user_agent, visitor_type, time))
 
     conn.commit()
     conn.close()
@@ -400,6 +425,9 @@ def admin():
 <tr>
 <th>ID</th>
 <th>IP</th>
+<th>Country</th>
+<th>City</th>
+<th>ISP</th>
 <th>Path</th>
 <th>Method</th>
 <th>User Agent</th>
@@ -429,7 +457,8 @@ def logout():
 # تشغيل السيرفر
 # ========================
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT",5000))
     logging.info("Server is running...")
-    app.run()
+    app.run(host="0.0.0.0", port=port)
 
         
